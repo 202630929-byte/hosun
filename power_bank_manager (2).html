@@ -1,0 +1,1290 @@
+: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Bank Manager - 실시간 보조배터리 충전 시뮬레이터</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .dark body {
+            background-color: #030712;
+            color: #f3f4f6;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 50% 50%, rgba(168, 85, 247, 0.08) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        .light body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.06) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.06) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        /* Modern Glassmorphism Styling */
+        .glass-card {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .dark .glass-card {
+            background: rgba(17, 24, 39, 0.82);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .light .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.06);
+        }
+
+        .glass-card-hover:hover {
+            transform: translateY(-3px);
+        }
+
+        .dark .glass-card-hover:hover {
+            border-color: rgba(6, 182, 212, 0.4);
+            box-shadow: 0 14px 35px -10px rgba(6, 182, 212, 0.2);
+        }
+
+        .light .glass-card-hover:hover {
+            border-color: rgba(16, 185, 129, 0.4);
+            box-shadow: 0 14px 35px -10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Charging Pulse & Glow Animations */
+        @keyframes charging-glow {
+            0%, 100% {
+                box-shadow: 0 0 15px rgba(16, 185, 129, 0.6), inset 0 0 10px rgba(16, 185, 129, 0.3);
+            }
+            50% {
+                box-shadow: 0 0 5px rgba(16, 185, 129, 0.2), inset 0 0 2px rgba(16, 185, 129, 0.1);
+            }
+        }
+
+        .charging-card-active {
+            animation: charging-glow 2s infinite ease-in-out;
+            border-color: rgba(16, 185, 129, 0.6) !important;
+        }
+
+        @keyframes energy-flow {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
+        .energy-beam {
+            background: linear-gradient(90deg, #10b981, #06b6d4, #3b82f6, #10b981);
+            background-size: 200% 100%;
+            animation: energy-flow 1.5s linear infinite;
+        }
+
+        /* Custom Range Input */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #10b981;
+            cursor: pointer;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.8);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.6);
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-20">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2.5 pointer-events-none"></div>
+
+    <div id="app" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+
+        <!-- App Navigation Header -->
+        <header class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-6 mb-6 border-b border-gray-200 dark:border-gray-800">
+            <div class="flex items-center gap-3.5">
+                <div class="p-3.5 bg-gradient-to-tr from-cyan-500 via-emerald-500 to-teal-400 rounded-2xl text-black shadow-lg shadow-emerald-500/20 flex items-center justify-center">
+                    <i class="fa-solid fa-charging-station text-2xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-2xl font-black tracking-tight bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                            POWER BANK MANAGER
+                        </h1>
+                        <span class="px-2.5 py-0.5 text-[11px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-full font-bold flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                            LIVE ENGINE v4.0
+                        </span>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        실시간 충전 시뮬레이션, 남아있는 완충 시간 계산 & 통합 스마트 배터리 관리자
+                    </p>
+                </div>
+            </div>
+
+            <!-- Top Controls Toolbar -->
+            <div class="flex items-center gap-3 flex-wrap">
+                <!-- Theme Toggle Button -->
+                <button onclick="toggleTheme()" class="p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-cyan-500 transition-all shadow-sm" title="테마 전환">
+                    <i id="theme-icon" class="fa-solid fa-moon text-sm"></i>
+                </button>
+
+                <!-- Reset Sample Data Button -->
+                <button onclick="resetSampleData()" class="px-3.5 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-white bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 rounded-xl transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-rotate-left"></i> 샘플 복원
+                </button>
+
+                <!-- Primary Open Modal Button -->
+                <button onclick="openRegisterModal()" class="px-4 py-2.5 text-xs font-extrabold text-black bg-gradient-to-r from-cyan-400 via-emerald-400 to-teal-300 hover:from-cyan-300 hover:to-emerald-300 rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 active:scale-95">
+                    <i class="fa-solid fa-circle-plus text-sm"></i> 새 보조배터리 등록
+                </button>
+            </div>
+        </header>
+
+        <!-- Simulation Speed & Engine Control Toolbar Banner -->
+        <section class="glass-card rounded-2xl p-4 mb-6 border border-emerald-500/30 bg-gradient-to-r from-emerald-950/20 via-gray-900/40 to-cyan-950/20 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-xl">
+                    <i class="fa-solid fa-gauge-high text-lg"></i>
+                </div>
+                <div>
+                    <h2 class="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        ⏱️ 실시간 충전 시뮬레이션 배속 설정
+                        <span id="active-speed-badge" class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/30 font-mono font-bold">1x (실시간)</span>
+                    </h2>
+                    <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                        시뮬레이션 속도를 높이면 전력 충전되는 모습을 빠르게 미리 테스트할 수 있습니다.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Speed Control Buttons -->
+            <div class="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                <button onclick="setSimulationSpeed(1)" id="speed-btn-1" class="speed-btn active px-3 py-1.5 text-xs font-bold font-mono rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 transition-all whitespace-nowrap">
+                    1x (실시간)
+                </button>
+                <button onclick="setSimulationSpeed(10)" id="speed-btn-10" class="speed-btn px-3 py-1.5 text-xs font-bold font-mono rounded-xl border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-emerald-400 transition-all whitespace-nowrap">
+                    10x (빠르게)
+                </button>
+                <button onclick="setSimulationSpeed(60)" id="speed-btn-60" class="speed-btn px-3 py-1.5 text-xs font-bold font-mono rounded-xl border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-cyan-400 transition-all whitespace-nowrap">
+                    60x (1초=1분)
+                </button>
+                <button onclick="setSimulationSpeed(300)" id="speed-btn-300" class="speed-btn px-3 py-1.5 text-xs font-bold font-mono rounded-xl border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-purple-400 transition-all whitespace-nowrap">
+                    300x (초고속)
+                </button>
+            </div>
+        </section>
+
+        <!-- Stats Overview Cards -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <!-- Total Power Banks Card -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden flex flex-col justify-between">
+                <div class="absolute -right-3 -bottom-3 opacity-10 text-cyan-400">
+                    <i class="fa-solid fa-boxes-stacked text-7xl"></i>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">등록된 보조배터리</span>
+                        <span class="p-1.5 bg-cyan-500/10 text-cyan-400 rounded-lg text-xs"><i class="fa-solid fa-list-check"></i></span>
+                    </div>
+                    <div class="flex items-baseline gap-2 mt-2">
+                        <span id="stat-total-count" class="text-3xl font-mono font-black text-gray-900 dark:text-white">0</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">개 보유 중</span>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-800 flex justify-between text-xs">
+                    <span class="text-gray-500 dark:text-gray-400">완충 대기 중:</span>
+                    <span id="stat-idle-count" class="font-mono text-cyan-500 dark:text-cyan-400 font-bold">0개</span>
+                </div>
+            </div>
+
+            <!-- Charging Status Card -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden flex flex-col justify-between border-l-4 border-emerald-500">
+                <div class="absolute -right-3 -bottom-3 opacity-10 text-emerald-400">
+                    <i class="fa-solid fa-bolt-lightning text-7xl"></i>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">현재 충전 진행 중</span>
+                        <span class="p-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg text-xs"><i class="fa-solid fa-plug-circle-bolt animate-pulse"></i></span>
+                    </div>
+                    <div class="flex items-baseline gap-2 mt-2">
+                        <span id="stat-charging-count" class="text-3xl font-mono font-black text-emerald-500 dark:text-emerald-400">0</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">개 충전 중</span>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-800 flex justify-between text-xs">
+                    <span class="text-gray-500 dark:text-gray-400">합산 충전 입력:</span>
+                    <span id="stat-charging-watts" class="font-mono text-emerald-400 font-bold">0 W</span>
+                </div>
+            </div>
+
+            <!-- Total Capacity & Wh Card -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden flex flex-col justify-between">
+                <div class="absolute -right-3 -bottom-3 opacity-10 text-purple-400">
+                    <i class="fa-solid fa-battery-three-quarters text-7xl"></i>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">총 가용 잔여 용량</span>
+                        <span class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg text-xs"><i class="fa-solid fa-charging-station"></i></span>
+                    </div>
+                    <div class="flex items-baseline gap-2 mt-2">
+                        <span id="stat-total-mah" class="text-3xl font-mono font-black text-purple-400">0</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">mAh</span>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-800 flex justify-between text-xs">
+                    <span class="text-gray-500 dark:text-gray-400">전력량 환산:</span>
+                    <span id="stat-total-wh" class="font-mono text-purple-300 font-bold">0 Wh</span>
+                </div>
+            </div>
+
+            <!-- Average Level Card -->
+            <div class="glass-card rounded-2xl p-5 relative overflow-hidden flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">전체 평균 잔량</span>
+                        <span id="stat-avg-percentage" class="text-base font-mono font-black text-cyan-400">0%</span>
+                    </div>
+                    <!-- Visual Gauge Bar -->
+                    <div class="w-full bg-gray-200 dark:bg-gray-900 rounded-full h-3 p-0.5 border border-gray-300 dark:border-gray-800 mt-2">
+                        <div id="stat-avg-bar" class="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-800 flex justify-between text-xs">
+                    <span class="text-gray-500 dark:text-gray-400">충전 시급 (&lt;30%):</span>
+                    <span id="stat-low-count" class="font-mono text-rose-500 font-bold">0개</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Search Bar & Category Filter Bar -->
+        <section class="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+            <!-- Search Input -->
+            <div class="relative w-full sm:w-80">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                <input type="text" id="search-input" oninput="handleSearchFilter()" placeholder="배터리 이름, 브랜드, 카테고리 검색..." 
+                    class="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-xs rounded-xl pl-9 pr-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:border-cyan-500 transition-all shadow-sm">
+            </div>
+
+            <!-- Filter Badges -->
+            <div class="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                <button onclick="setFilter('all')" id="btn-filter-all" class="filter-btn active px-3.5 py-2 text-xs font-bold rounded-xl border border-cyan-500/50 bg-cyan-500/10 text-cyan-400 transition-all whitespace-nowrap">
+                    전체 보기
+                </button>
+                <button onclick="setFilter('charging')" id="btn-filter-charging" class="filter-btn px-3.5 py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-emerald-400 transition-all whitespace-nowrap flex items-center gap-1">
+                    ⚡ 충전 중
+                </button>
+                <button onclick="setFilter('full')" id="btn-filter-full" class="filter-btn px-3.5 py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-blue-400 transition-all whitespace-nowrap flex items-center gap-1">
+                    ✅ 완충됨
+                </button>
+                <button onclick="setFilter('idle')" id="btn-filter-idle" class="filter-btn px-3.5 py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-amber-400 transition-all whitespace-nowrap flex items-center gap-1">
+                    🔋 대기 중
+                </button>
+                <button onclick="setFilter('low')" id="btn-filter-low" class="filter-btn px-3.5 py-2 text-xs font-bold rounded-xl border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-rose-500 transition-all whitespace-nowrap flex items-center gap-1">
+                    ⚠️ 충전 시급
+                </button>
+            </div>
+        </section>
+
+        <!-- Main Battery Cards Grid Container -->
+        <main>
+            <div id="battery-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Dynamic Battery Cards Rendered via JS -->
+            </div>
+
+            <!-- Empty State Display -->
+            <div id="empty-state" class="hidden glass-card rounded-2xl p-12 text-center max-w-md mx-auto my-12 border-dashed border-gray-300 dark:border-gray-700">
+                <div class="w-16 h-16 bg-gray-100 dark:bg-gray-900 text-gray-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-gray-200 dark:border-gray-800">
+                    <i class="fa-solid fa-battery-empty text-3xl"></i>
+                </div>
+                <h3 class="text-base font-bold text-gray-900 dark:text-white mb-1">등록된 보조배터리가 없습니다</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-6">검색 필터를 변경하거나 새로운 보조배터리를 등록해보세요.</p>
+                <button onclick="openRegisterModal()" class="px-5 py-2.5 text-xs font-extrabold text-black bg-emerald-400 hover:bg-emerald-300 rounded-xl transition-all inline-flex items-center gap-2 shadow-md">
+                    <i class="fa-solid fa-plus"></i> 새 보조배터리 등록하기
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Power Bank Registration & Edit Modal -->
+    <div id="battery-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md hidden opacity-0 transition-opacity duration-300 overflow-y-auto">
+        <div class="glass-card w-full max-w-4xl rounded-3xl border border-gray-300 dark:border-gray-700 p-6 md:p-8 shadow-2xl relative my-8 transform scale-95 transition-transform duration-300" id="modal-container">
+            
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between pb-4 border-b border-gray-200 dark:border-gray-800 mb-6">
+                <div class="flex items-center gap-3">
+                    <div id="modal-icon-bg" class="p-3.5 bg-gradient-to-tr from-cyan-400 to-emerald-400 text-black rounded-2xl shadow-md">
+                        <i id="modal-header-icon" class="fa-solid fa-battery-charging text-xl"></i>
+                    </div>
+                    <div>
+                        <h3 id="modal-title" class="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2">
+                            새 보조배터리 등록
+                            <span class="text-[10px] bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">신규 등록</span>
+                        </h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">보조배터리 스펙과 충전기 속도를 입력하면 우측에서 실시간 미리보기가 동작합니다.</p>
+                    </div>
+                </div>
+                <button onclick="closeRegisterModal()" class="p-2 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Form & Live Preview Grid Layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                
+                <!-- Registration Form Column (7 cols) -->
+                <form id="battery-form" onsubmit="handleFormSubmit(event)" class="lg:col-span-7 space-y-4">
+                    <input type="hidden" id="form-id">
+
+                    <!-- Name & Brand -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">배터리 이름 / 별칭 *</label>
+                            <input type="text" id="form-name" required oninput="updateLivePreview()" placeholder="예: 앤커 737 초고속 파워뱅크" 
+                                class="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">제조사 / 브랜드 *</label>
+                            <input type="text" id="form-brand" required oninput="updateLivePreview()" placeholder="예: Anker, Xiaomi, Samsung" 
+                                class="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+
+                    <!-- Capacity with Quick Presets -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300">전체 정격 용량 (mAh) *</label>
+                            <!-- Quick Capacity Presets -->
+                            <div class="flex items-center gap-1">
+                                <button type="button" onclick="setFormCapacity(5000)" class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-800 hover:bg-cyan-500/20 text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-700">5k</button>
+                                <button type="button" onclick="setFormCapacity(10000)" class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-800 hover:bg-cyan-500/20 text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-700">10k</button>
+                                <button type="button" onclick="setFormCapacity(20000)" class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-800 hover:bg-cyan-500/20 text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-700">20k</button>
+                                <button type="button" onclick="setFormCapacity(30000)" class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-800 hover:bg-cyan-500/20 text-gray-700 dark:text-gray-300 rounded border border-gray-300 dark:border-gray-700">30k</button>
+                            </div>
+                        </div>
+                        <input type="number" id="form-capacity" required min="500" max="100000" step="100" value="10000" oninput="updateLivePreview()"
+                            class="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:border-cyan-500">
+                    </div>
+
+                    <!-- Initial Level Slider & Charger Wattage -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <div class="flex justify-between text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                                <span>현재 잔량 (%) *</span>
+                                <span id="form-level-val" class="text-cyan-400 font-mono">40%</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="range" id="form-level-slider" min="0" max="100" value="40" oninput="syncLevelSlider(this.value)" class="w-full accent-emerald-500 cursor-pointer">
+                                <input type="number" id="form-level" required min="0" max="100" value="40" oninput="syncLevelInput(this.value)"
+                                    class="w-16 bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-2 py-1 text-xs text-center font-mono text-gray-900 dark:text-white focus:outline-none focus:border-cyan-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">충전기 입력 출력 (W) *</label>
+                            <select id="form-watt" onchange="updateLivePreview()" class="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white font-mono focus:outline-none focus:border-cyan-500 cursor-pointer">
+                                <option value="10">🔌 10W (일반 표준 충전)</option>
+                                <option value="18" selected>⚡ 18W (QuickCharge 3.0)</option>
+                                <option value="30">🚀 30W (PD 고속 충전)</option>
+                                <option value="65">💻 65W (PD 초고속 충전)</option>
+                                <option value="100">🔥 100W (PD 플래그십 충전)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Category & Icons -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">용도 / 카테고리</label>
+                            <select id="form-category" onchange="updateLivePreview()" class="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-cyan-500 cursor-pointer">
+                                <option value="출퇴근용">🏢 출퇴근 / 데일리</option>
+                                <option value="여행용">✈️ 여행 / 출장용</option>
+                                <option value="캠핑용">🏕️ 캠핑 / 아웃도어</option>
+                                <option value="맥북전용">💻 맥북 / 초고속 PD</option>
+                                <option value="비상용">🚨 비상 방재용</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">아이콘 선택</label>
+                            <select id="form-icon" onchange="updateLivePreview()" class="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-cyan-500 cursor-pointer">
+                                <option value="fa-bolt">⚡ 번개 (Standard)</option>
+                                <option value="fa-wifi">📡 MagSafe 무선 (Wireless)</option>
+                                <option value="fa-laptop">💻 노트북 PD (High Power)</option>
+                                <option value="fa-briefcase">💼 슬림 휴대용 (Slim)</option>
+                                <option value="fa-campground">🏕️ 캠핑용 (Outdoor)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Ports Selection -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">지원 포트 (복수 선택 가능)</label>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <label class="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-950 rounded-xl border border-gray-300 dark:border-gray-800 cursor-pointer">
+                                <input type="checkbox" id="port-usbc" checked onchange="updateLivePreview()" class="accent-emerald-500">
+                                <span class="text-gray-800 dark:text-gray-300">USB-C PD</span>
+                            </label>
+                            <label class="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-950 rounded-xl border border-gray-300 dark:border-gray-800 cursor-pointer">
+                                <input type="checkbox" id="port-usba" checked onchange="updateLivePreview()" class="accent-emerald-500">
+                                <span class="text-gray-800 dark:text-gray-300">USB-A</span>
+                            </label>
+                            <label class="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-950 rounded-xl border border-gray-300 dark:border-gray-800 cursor-pointer">
+                                <input type="checkbox" id="port-magsafe" onchange="updateLivePreview()" class="accent-emerald-500">
+                                <span class="text-gray-800 dark:text-gray-300">MagSafe 무선</span>
+                            </label>
+                            <label class="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-950 rounded-xl border border-gray-300 dark:border-gray-800 cursor-pointer">
+                                <input type="checkbox" id="port-lightning" onchange="updateLivePreview()" class="accent-emerald-500">
+                                <span class="text-gray-800 dark:text-gray-300">8핀 Lightning</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Start Charging Immediately Checkbox -->
+                    <div class="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/30 flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" id="form-start-charging" checked onchange="updateLivePreview()" class="w-4 h-4 accent-emerald-500 cursor-pointer">
+                        <div>
+                            <label for="form-start-charging" class="text-xs font-bold text-emerald-400 cursor-pointer block">
+                                ⚡ 등록 즉시 충전기 연결 및 실시간 충전 시작
+                            </label>
+                            <span class="text-[10px] text-gray-400">체크 시 저장되자마자 타이머가 작동하며 실시간으로 충전이 시작됩니다.</span>
+                        </div>
+                    </div>
+
+                    <!-- Modal Actions -->
+                    <div class="flex items-center justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-800">
+                        <button type="button" onclick="closeRegisterModal()" class="px-4 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+                            닫기
+                        </button>
+                        <button type="submit" class="px-6 py-2.5 text-xs font-black text-black bg-gradient-to-r from-cyan-400 to-emerald-400 hover:from-cyan-300 hover:to-emerald-300 rounded-xl shadow-lg shadow-cyan-500/25 transition-all active:scale-95 flex items-center gap-1.5">
+                            <i class="fa-solid fa-floppy-disk"></i> 보조배터리 등록 완료
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Live Card Preview Column (5 cols) -->
+                <div class="lg:col-span-5 flex flex-col justify-center">
+                    <div class="mb-2 flex items-center justify-between">
+                        <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-eye"></i> 실시간 카드 미리보기
+                        </span>
+                        <span class="text-[10px] text-gray-400 font-mono">Live Simulation</span>
+                    </div>
+
+                    <!-- Live Dynamic Preview Container -->
+                    <div id="live-preview-card" class="glass-card rounded-2xl p-5 border border-cyan-500/40 relative shadow-xl">
+                        <!-- Rendered via JS -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sample Initial Batteries
+        const DEFAULT_BATTERIES = [
+            {
+                id: "pb-101",
+                name: "앤커 737 초고속 파워뱅크",
+                brand: "Anker (앤커)",
+                capacity: 24000,
+                level: 35,
+                inputWatt: 65,
+                category: "맥북전용",
+                ports: ["USB-C PD", "USB-A"],
+                icon: "fa-laptop",
+                isCharging: true
+            },
+            {
+                id: "pb-102",
+                name: "베이스어스 맥세이프 마그네틱",
+                brand: "Baseus (베이스어스)",
+                capacity: 10000,
+                level: 70,
+                inputWatt: 18,
+                category: "출퇴근용",
+                ports: ["USB-C PD", "MagSafe 무선"],
+                icon: "fa-wifi",
+                isCharging: true
+            },
+            {
+                id: "pb-103",
+                name: "샤오미 3세대 20,000mAh",
+                brand: "Xiaomi (샤오미)",
+                capacity: 20000,
+                level: 100,
+                inputWatt: 18,
+                category: "캠핑용",
+                ports: ["USB-C PD", "USB-A"],
+                icon: "fa-bolt",
+                isCharging: false
+            }
+        ];
+
+        let batteries = [];
+        let currentFilter = 'all';
+        let searchQuery = '';
+        let simSpeed = 1; // 1x, 10x, 60x, 300x
+        let simInterval = null;
+        let lastTickTimestamp = Date.now();
+
+        // On Document Ready
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            loadStorageData();
+            applyOfflineChargingProgress();
+            renderAllViews();
+            startSimulationEngine();
+
+            // ⭐ Auto-open registration modal on page load
+            setTimeout(() => {
+                openRegisterModal();
+            }, 250);
+        });
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('powerbank_theme') || 'dark';
+            if (savedTheme === 'light') {
+                document.documentElement.classList.remove('dark');
+                document.documentElement.classList.add('light');
+                document.getElementById('theme-icon').className = 'fa-solid fa-sun text-amber-500';
+            } else {
+                document.documentElement.classList.add('dark');
+                document.documentElement.classList.remove('light');
+                document.getElementById('theme-icon').className = 'fa-solid fa-moon text-cyan-400';
+            }
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.contains('dark');
+            if (isDark) {
+                document.documentElement.classList.remove('dark');
+                document.documentElement.classList.add('light');
+                localStorage.setItem('powerbank_theme', 'light');
+                document.getElementById('theme-icon').className = 'fa-solid fa-sun text-amber-500';
+                showToast("라이트 모드로 전환되었습니다.");
+            } else {
+                document.documentElement.classList.add('dark');
+                document.documentElement.classList.remove('light');
+                localStorage.setItem('powerbank_theme', 'dark');
+                document.getElementById('theme-icon').className = 'fa-solid fa-moon text-cyan-400';
+                showToast("다크 모드로 전환되었습니다.");
+            }
+        }
+
+        function loadStorageData() {
+            const stored = localStorage.getItem('powerbank_sim_v4');
+            if (stored) {
+                try {
+                    batteries = JSON.parse(stored);
+                } catch (e) {
+                    batteries = [...DEFAULT_BATTERIES];
+                }
+            } else {
+                batteries = JSON.parse(JSON.stringify(DEFAULT_BATTERIES));
+                saveStorageData();
+            }
+        }
+
+        function saveStorageData() {
+            localStorage.setItem('powerbank_sim_v4', JSON.stringify(batteries));
+            localStorage.setItem('powerbank_last_timestamp', Date.now().toString());
+        }
+
+        function resetSampleData() {
+            if (confirm("샘플 보조배터리 데이터로 초기화하시겠습니까?")) {
+                batteries = JSON.parse(JSON.stringify(DEFAULT_BATTERIES));
+                saveStorageData();
+                renderAllViews();
+                showToast("샘플 보조배터리 데이터가 복원되었습니다.");
+            }
+        }
+
+        /**
+         * Physics Math for Charging:
+         * Lithium Efficiency ~ 85% (0.85)
+         * Energy required for 1% level of capacity C (mAh) at 3.7V:
+         * Joules for 100% = C * 0.001 * 3.7 * 3600 = C * 13.32 Joules
+         * Joules for 1% = C * 0.1332 Joules
+         * Charging power input P (Watts) = Joules / second
+         * Effective Charging Power = P * 0.85
+         */
+        function getRemainingSeconds(b) {
+            if (b.level >= 100) return 0;
+            const missingPercent = 100 - b.level;
+            const missingJoules = missingPercent * b.capacity * 0.1332;
+            const effectiveWatt = (b.inputWatt || 18) * 0.85;
+            if (effectiveWatt <= 0) return 0;
+            return missingJoules / effectiveWatt;
+        }
+
+        function formatRemainingTime(totalSeconds) {
+            if (totalSeconds <= 0) return "✅ 완충 완료!";
+            const secs = Math.floor(totalSeconds);
+            const hrs = Math.floor(secs / 3600);
+            const mins = Math.floor((secs % 3600) / 60);
+            const s = secs % 60;
+
+            let str = "";
+            if (hrs > 0) str += `${hrs}시간 `;
+            if (mins > 0 || hrs > 0) str += `${mins}분 `;
+            str += `${s}초`;
+            return str;
+        }
+
+        // Calculate progress made while page was closed/refreshed
+        function applyOfflineChargingProgress() {
+            const lastTimeStr = localStorage.getItem('powerbank_last_timestamp');
+            const now = Date.now();
+            if (lastTimeStr) {
+                const elapsedRealSec = (now - parseInt(lastTimeStr)) / 1000;
+                if (elapsedRealSec > 1) {
+                    let finishedList = [];
+                    batteries.forEach(b => {
+                        if (b.isCharging && b.level < 100) {
+                            const effectiveWatt = (b.inputWatt || 18) * 0.85;
+                            const joulesGained = effectiveWatt * elapsedRealSec;
+                            const percentGained = joulesGained / (b.capacity * 0.1332);
+                            
+                            b.level += percentGained;
+                            if (b.level >= 100) {
+                                b.level = 100;
+                                b.isCharging = false;
+                                finishedList.push(b.name);
+                            }
+                        }
+                    });
+                    if (finishedList.length > 0) {
+                        setTimeout(() => {
+                            showToast(`🎉 부재 중 ${finishedList.length}개의 배터리가 완충되었습니다!`);
+                        }, 600);
+                    }
+                    saveStorageData();
+                }
+            }
+        }
+
+        // Real-Time Simulation Engine Loop
+        function startSimulationEngine() {
+            if (simInterval) clearInterval(simInterval);
+            lastTickTimestamp = Date.now();
+
+            simInterval = setInterval(() => {
+                const now = Date.now();
+                const deltaRealSec = (now - lastTickTimestamp) / 1000;
+                lastTickTimestamp = now;
+
+                const effectiveDeltaSec = deltaRealSec * simSpeed;
+                let needFullRerender = false;
+
+                batteries.forEach(b => {
+                    if (b.isCharging && b.level < 100) {
+                        const effectiveWatt = (b.inputWatt || 18) * 0.85;
+                        const joulesGained = effectiveWatt * effectiveDeltaSec;
+                        const percentGained = joulesGained / (b.capacity * 0.1332);
+
+                        b.level += percentGained;
+                        if (b.level >= 100) {
+                            b.level = 100;
+                            b.isCharging = false;
+                            needFullRerender = true;
+                            showToast(`🎉 '${b.name}' 보조배터리가 100% 완충되었습니다!`);
+                        }
+                    }
+                });
+
+                if (needFullRerender) {
+                    saveStorageData();
+                    renderAllViews();
+                } else {
+                    saveStorageData();
+                    updateDynamicDom();
+                }
+            }, 1000);
+        }
+
+        function setSimulationSpeed(speed) {
+            simSpeed = speed;
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                btn.classList.remove('border-emerald-500/50', 'bg-emerald-500/10', 'text-emerald-400');
+                btn.classList.add('border-gray-300', 'dark:border-gray-800', 'text-gray-600', 'dark:text-gray-400');
+            });
+
+            const activeBtn = document.getElementById(`speed-btn-${speed}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('border-gray-300', 'dark:border-gray-800', 'text-gray-600', 'dark:text-gray-400');
+                activeBtn.classList.add('border-emerald-500/50', 'bg-emerald-500/10', 'text-emerald-400');
+            }
+
+            const badge = document.getElementById('active-speed-badge');
+            if (speed === 1) badge.textContent = "1x (실시간)";
+            else if (speed === 10) badge.textContent = "10x (10배속)";
+            else if (speed === 60) badge.textContent = "60x (1초 = 1분)";
+            else if (speed === 300) badge.textContent = "300x (초고속 모의시험)";
+
+            showToast(`시뮬레이션 속도가 ${speed}배속으로 설정되었습니다.`);
+        }
+
+        function renderAllViews() {
+            renderDashboard();
+            renderBatteryGrid();
+        }
+
+        function renderDashboard() {
+            const count = batteries.length;
+            const chargingList = batteries.filter(b => b.isCharging && b.level < 100);
+            const chargingCount = chargingList.length;
+            const idleCount = batteries.filter(b => !b.isCharging && b.level < 100).length;
+            const lowCount = batteries.filter(b => b.level < 30).length;
+
+            const totalChargingWatts = chargingList.reduce((sum, b) => sum + (b.inputWatt || 18), 0);
+            const totalRemainingMah = batteries.reduce((sum, b) => sum + Math.round((b.capacity * b.level) / 100), 0);
+            const totalWh = ((totalRemainingMah * 3.7) / 1000).toFixed(1);
+            
+            const avgLevel = count > 0 
+                ? Math.round(batteries.reduce((sum, b) => sum + b.level, 0) / count) 
+                : 0;
+
+            document.getElementById('stat-total-count').textContent = count;
+            document.getElementById('stat-charging-count').textContent = chargingCount;
+            document.getElementById('stat-idle-count').textContent = `${idleCount}개`;
+            document.getElementById('stat-charging-watts').textContent = `${totalChargingWatts} W`;
+            document.getElementById('stat-total-mah').textContent = totalRemainingMah.toLocaleString();
+            document.getElementById('stat-total-wh').textContent = `${totalWh} Wh`;
+            document.getElementById('stat-avg-percentage').textContent = `${avgLevel}%`;
+            document.getElementById('stat-avg-bar').style.width = `${avgLevel}%`;
+            document.getElementById('stat-low-count').textContent = `${lowCount}개`;
+        }
+
+        function getFilteredBatteries() {
+            return batteries.filter(b => {
+                const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                      b.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                      (b.category && b.category.toLowerCase().includes(searchQuery.toLowerCase()));
+                if (!matchesSearch) return false;
+
+                if (currentFilter === 'charging') return b.isCharging && b.level < 100;
+                if (currentFilter === 'full') return b.level >= 100;
+                if (currentFilter === 'idle') return !b.isCharging && b.level < 100;
+                if (currentFilter === 'low') return b.level < 30;
+
+                return true;
+            });
+        }
+
+        function renderBatteryGrid() {
+            const grid = document.getElementById('battery-grid');
+            const emptyState = document.getElementById('empty-state');
+            const filtered = getFilteredBatteries();
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            grid.innerHTML = filtered.map(item => {
+                const currentLevelInt = Math.floor(item.level);
+                const remainingMah = Math.round((item.capacity * item.level) / 100);
+                const remainingSecs = getRemainingSeconds(item);
+                const timeText = formatRemainingTime(remainingSecs);
+
+                // Level colors
+                let levelGradient = 'from-emerald-500 to-teal-400';
+                let levelTextColor = 'text-emerald-400';
+                if (item.level < 30) {
+                    levelGradient = 'from-rose-500 to-red-600';
+                    levelTextColor = 'text-rose-500';
+                } else if (item.level < 70) {
+                    levelGradient = 'from-amber-500 to-yellow-400';
+                    levelTextColor = 'text-amber-400';
+                }
+
+                const portsBadges = item.ports.map(p => `
+                    <span class="text-[10px] px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-gray-600 dark:text-gray-300 font-medium">
+                        ${p}
+                    </span>
+                `).join('');
+
+                const isChargingCardClass = (item.isCharging && item.level < 100) 
+                    ? 'charging-card-active' 
+                    : 'border-gray-200 dark:border-gray-800';
+
+                return `
+                    <div id="card-${item.id}" class="glass-card glass-card-hover rounded-2xl p-5 flex flex-col justify-between relative border ${isChargingCardClass}">
+                        <div>
+                            <!-- Header & Category -->
+                            <div class="flex items-start justify-between gap-2 mb-2">
+                                <div>
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 uppercase tracking-wider">
+                                            ${item.brand}
+                                        </span>
+                                        ${item.category ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/30 font-semibold">${item.category}</span>` : ''}
+                                    </div>
+                                    <h3 class="text-base font-extrabold text-gray-900 dark:text-white mt-1.5 flex items-center gap-2">
+                                        <i class="fa-solid ${item.icon || 'fa-bolt'} text-cyan-400"></i>
+                                        ${item.name}
+                                    </h3>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <button onclick="openRegisterModal('${item.id}')" title="수정" class="p-1.5 text-gray-400 hover:text-cyan-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <button onclick="deleteBattery('${item.id}')" title="삭제" class="p-1.5 text-gray-400 hover:text-rose-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                        <i class="fa-solid fa-trash-can text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Live Gauge & Timer Box -->
+                            <div class="my-3.5 p-3.5 bg-gray-50 dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 relative overflow-hidden">
+                                
+                                ${item.isCharging && item.level < 100 ? `
+                                    <div class="absolute top-0 left-0 right-0 h-1 energy-beam"></div>
+                                ` : ''}
+
+                                <div class="flex items-center justify-between text-xs mb-1.5 font-mono">
+                                    <span class="text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                                        ${item.isCharging && item.level < 100 
+                                            ? '<i class="fa-solid fa-bolt text-emerald-400 animate-bounce"></i> <span class="text-emerald-400 font-bold">충전 진행 중</span>' 
+                                            : (item.level >= 100 ? '<i class="fa-solid fa-circle-check text-emerald-400"></i> <span class="text-emerald-400 font-bold">완충 완료</span>' : '<i class="fa-solid fa-plug text-gray-500"></i> 대기 중')}
+                                    </span>
+                                    <span id="level-num-${item.id}" class="font-bold text-sm ${levelTextColor}">${currentLevelInt}%</span>
+                                </div>
+
+                                <!-- Battery Visual Gauge -->
+                                <div class="relative flex items-center my-2">
+                                    <div class="w-full h-7 bg-gray-200 dark:bg-gray-900 rounded-lg p-1 border border-gray-300 dark:border-gray-700 relative overflow-hidden flex items-center">
+                                        <div id="level-bar-${item.id}" class="h-full rounded bg-gradient-to-r ${levelGradient} transition-all duration-300 relative" style="width: ${item.level}%">
+                                            ${item.isCharging && item.level < 100 ? '<div class="absolute inset-0 bg-white/20 animate-pulse"></div>' : ''}
+                                        </div>
+                                        <span id="mah-text-${item.id}" class="absolute right-2.5 text-[10px] font-mono font-extrabold text-gray-800 dark:text-gray-200 drop-shadow">
+                                            ${remainingMah.toLocaleString()} / ${item.capacity.toLocaleString()} mAh
+                                        </span>
+                                    </div>
+                                    <div class="w-1.5 h-3 bg-gray-400 dark:bg-gray-700 rounded-r-sm -ml-0.5"></div>
+                                </div>
+
+                                <!-- Countdown Timer Display -->
+                                <div class="mt-2.5 pt-2 border-t border-gray-200 dark:border-gray-800/80 flex items-center justify-between text-[11px]">
+                                    <span class="text-gray-500 dark:text-gray-400 font-mono">
+                                        🔌 입출력: <strong class="text-cyan-400">${item.inputWatt || 18}W</strong>
+                                    </span>
+                                    <span id="timer-${item.id}" class="font-mono font-bold ${item.isCharging && item.level < 100 ? 'text-emerald-400 animate-pulse' : 'text-gray-400'}">
+                                        ${item.isCharging && item.level < 100 ? `⚡ 완충까지 ${timeText}` : (item.level >= 100 ? '✅ 완충됨' : '⏸️ 충전 일시정지')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Port Tags -->
+                            <div class="flex flex-wrap gap-1 mb-4">
+                                ${portsBadges}
+                            </div>
+                        </div>
+
+                        <!-- Card Action Buttons -->
+                        <div class="pt-3 border-t border-gray-200 dark:border-gray-800/80 flex flex-col gap-2">
+                            <!-- Toggle Charging Button -->
+                            <button onclick="toggleCharging('${item.id}')" class="w-full py-2 text-xs font-black rounded-xl border transition-all flex items-center justify-center gap-2 active:scale-95 ${item.isCharging && item.level < 100 ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-lg shadow-emerald-500/10' : 'bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-emerald-500'}">
+                                <i class="fa-solid ${item.isCharging && item.level < 100 ? 'fa-pause text-emerald-400' : 'fa-bolt-lightning text-cyan-400'}"></i>
+                                ${item.isCharging && item.level < 100 ? '충전 일시정지' : (item.level >= 100 ? '충전기 연결됨 (완충)' : '⚡ 충전 시작하기')}
+                            </button>
+
+                            <!-- Quick Adjust Buttons -->
+                            <div class="grid grid-cols-4 gap-1">
+                                <button onclick="adjustLevel('${item.id}', -10)" class="py-1 text-[11px] font-mono font-bold bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg active:scale-95 transition-all">
+                                    -10%
+                                </button>
+                                <button onclick="adjustLevel('${item.id}', 10)" class="py-1 text-[11px] font-mono font-bold bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 rounded-lg active:scale-95 transition-all">
+                                    +10%
+                                </button>
+                                <button onclick="setLevelFull('${item.id}')" class="py-1 text-[11px] font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg active:scale-95 transition-all">
+                                    완충
+                                </button>
+                                <button onclick="setLevelEmpty('${item.id}')" class="py-1 text-[11px] font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg active:scale-95 transition-all">
+                                    방전
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Dynamic Lightweight DOM updates per second (avoids flickering)
+        function updateDynamicDom() {
+            renderDashboard();
+
+            batteries.forEach(item => {
+                const currentLevelInt = Math.floor(item.level);
+                const remainingMah = Math.round((item.capacity * item.level) / 100);
+                const remainingSecs = getRemainingSeconds(item);
+                const timeText = formatRemainingTime(remainingSecs);
+
+                const levelNumEl = document.getElementById(`level-num-${item.id}`);
+                const levelBarEl = document.getElementById(`level-bar-${item.id}`);
+                const mahTextEl = document.getElementById(`mah-text-${item.id}`);
+                const timerEl = document.getElementById(`timer-${item.id}`);
+
+                if (levelNumEl) levelNumEl.textContent = `${currentLevelInt}%`;
+                if (levelBarEl) levelBarEl.style.width = `${item.level}%`;
+                if (mahTextEl) mahTextEl.textContent = `${remainingMah.toLocaleString()} / ${item.capacity.toLocaleString()} mAh`;
+                if (timerEl) {
+                    if (item.isCharging && item.level < 100) {
+                        timerEl.textContent = `⚡ 완충까지 ${timeText}`;
+                        timerEl.className = "font-mono font-bold text-emerald-400 animate-pulse";
+                    } else if (item.level >= 100) {
+                        timerEl.textContent = "✅ 완충됨";
+                        timerEl.className = "font-mono font-bold text-emerald-400";
+                    } else {
+                        timerEl.textContent = "⏸️ 충전 일시정지";
+                        timerEl.className = "font-mono font-bold text-gray-400";
+                    }
+                }
+            });
+        }
+
+        function setFormCapacity(val) {
+            document.getElementById('form-capacity').value = val;
+            updateLivePreview();
+        }
+
+        function syncLevelSlider(val) {
+            document.getElementById('form-level').value = val;
+            document.getElementById('form-level-val').textContent = `${val}%`;
+            updateLivePreview();
+        }
+
+        function syncLevelInput(val) {
+            let num = parseInt(val) || 0;
+            if (num > 100) num = 100;
+            if (num < 0) num = 0;
+            document.getElementById('form-level-slider').value = num;
+            document.getElementById('form-level-val').textContent = `${num}%`;
+            updateLivePreview();
+        }
+
+        function updateLivePreview() {
+            const name = document.getElementById('form-name').value.trim() || "배터리 이름 미입력";
+            const brand = document.getElementById('form-brand').value.trim() || "브랜드명";
+            const cap = parseInt(document.getElementById('form-capacity').value) || 10000;
+            const level = parseInt(document.getElementById('form-level').value) || 40;
+            const watt = parseInt(document.getElementById('form-watt').value) || 18;
+            const icon = document.getElementById('form-icon').value || "fa-bolt";
+            const category = document.getElementById('form-category').value;
+            const isAutoCharging = document.getElementById('form-start-charging').checked;
+
+            const ports = [];
+            if (document.getElementById('port-usbc').checked) ports.push("USB-C PD");
+            if (document.getElementById('port-usba').checked) ports.push("USB-A");
+            if (document.getElementById('port-magsafe').checked) ports.push("MagSafe 무선");
+            if (document.getElementById('port-lightning').checked) ports.push("8핀 Lightning");
+
+            const remainingMah = Math.round((cap * level) / 100);
+            const dummyItem = { capacity: cap, level: level, inputWatt: watt };
+            const secs = getRemainingSeconds(dummyItem);
+            const timeStr = formatRemainingTime(secs);
+
+            const portsBadges = ports.length > 0 
+                ? ports.map(p => `<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-mono">${p}</span>`).join(' ')
+                : `<span class="text-[10px] text-gray-400 italic">선택 포트 없음</span>`;
+
+            const previewCard = document.getElementById('live-preview-card');
+            previewCard.innerHTML = `
+                <div class="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 uppercase tracking-wider">
+                                ${brand}
+                            </span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/30 font-semibold">${category}</span>
+                        </div>
+                        <h4 class="text-sm font-extrabold text-gray-900 dark:text-white mt-1.5 flex items-center gap-1.5">
+                            <i class="fa-solid ${icon} text-cyan-400"></i>
+                            ${name}
+                        </h4>
+                    </div>
+                    <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30 font-bold">
+                        ${watt}W 입력
+                    </span>
+                </div>
+
+                <div class="my-3 p-3 bg-gray-100 dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800">
+                    <div class="flex justify-between text-[11px] font-mono mb-1 text-gray-600 dark:text-gray-300">
+                        <span>현재 잔량: <strong class="text-emerald-400">${level}%</strong></span>
+                        <span>${remainingMah.toLocaleString()} / ${cap.toLocaleString()} mAh</span>
+                    </div>
+                    <div class="w-full h-5 bg-gray-200 dark:bg-gray-900 rounded-md p-0.5 border border-gray-300 dark:border-gray-700 flex items-center">
+                        <div class="h-full rounded bg-gradient-to-r from-emerald-500 to-teal-400" style="width: ${level}%"></div>
+                    </div>
+                    <div class="mt-2 text-[11px] font-mono font-bold text-emerald-400 flex items-center justify-between">
+                        <span>예상 완충 시간:</span>
+                        <span>${timeStr}</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex flex-wrap gap-1">
+                        ${portsBadges}
+                    </div>
+                    <div class="text-[10px] text-gray-400 italic">
+                        ${isAutoCharging ? '⚡ 저장 즉시 실시간 충전 시뮬레이션 시작됨' : '⏸️ 충전 일시정지 상태로 저장됨'}
+                    </div>
+                </div>
+            `;
+        }
+
+        function openRegisterModal(editId = null) {
+            const modal = document.getElementById('battery-modal');
+            const container = document.getElementById('modal-container');
+            const form = document.getElementById('battery-form');
+            const modalTitle = document.getElementById('modal-title');
+
+            form.reset();
+
+            if (editId) {
+                const item = batteries.find(b => b.id === editId);
+                if (item) {
+                    modalTitle.innerHTML = `보조배터리 정보 수정 <span class="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">수정 모드</span>`;
+                    document.getElementById('form-id').value = item.id;
+                    document.getElementById('form-name').value = item.name;
+                    document.getElementById('form-brand').value = item.brand;
+                    document.getElementById('form-capacity').value = item.capacity;
+                    
+                    syncLevelSlider(Math.floor(item.level));
+
+                    document.getElementById('form-watt').value = item.inputWatt || 18;
+                    document.getElementById('form-category').value = item.category || '출퇴근용';
+                    document.getElementById('form-icon').value = item.icon || 'fa-bolt';
+                    document.getElementById('form-start-charging').checked = item.isCharging;
+
+                    document.getElementById('port-usbc').checked = item.ports.includes('USB-C PD');
+                    document.getElementById('port-usba').checked = item.ports.includes('USB-A');
+                    document.getElementById('port-magsafe').checked = item.ports.includes('MagSafe 무선');
+                    document.getElementById('port-lightning').checked = item.ports.includes('8핀 Lightning');
+                }
+            } else {
+                modalTitle.innerHTML = `새 보조배터리 등록 <span class="text-[10px] bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono">신규 등록</span>`;
+                document.getElementById('form-id').value = '';
+                syncLevelSlider(40);
+                document.getElementById('form-start-charging').checked = true;
+                document.getElementById('port-usbc').checked = true;
+                document.getElementById('port-usba').checked = true;
+                document.getElementById('port-magsafe').checked = false;
+                document.getElementById('port-lightning').checked = false;
+            }
+
+            updateLivePreview();
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                container.classList.remove('scale-95');
+                container.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeRegisterModal() {
+            const modal = document.getElementById('battery-modal');
+            const container = document.getElementById('modal-container');
+
+            container.classList.remove('scale-100');
+            container.classList.add('scale-95');
+            modal.classList.add('opacity-0');
+
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 250);
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById('form-id').value;
+
+            const ports = [];
+            if (document.getElementById('port-usbc').checked) ports.push("USB-C PD");
+            if (document.getElementById('port-usba').checked) ports.push("USB-A");
+            if (document.getElementById('port-magsafe').checked) ports.push("MagSafe 무선");
+            if (document.getElementById('port-lightning').checked) ports.push("8핀 Lightning");
+
+            if (ports.length === 0) {
+                alert("지원 포트를 최소 1개 이상 선택해 주세요.");
+                return;
+            }
+
+            const batteryData = {
+                id: id || `pb-${Date.now()}`,
+                name: document.getElementById('form-name').value.trim(),
+                brand: document.getElementById('form-brand').value.trim(),
+                capacity: parseInt(document.getElementById('form-capacity').value),
+                level: parseFloat(document.getElementById('form-level').value),
+                inputWatt: parseInt(document.getElementById('form-watt').value),
+                category: document.getElementById('form-category').value,
+                ports: ports,
+                icon: document.getElementById('form-icon').value,
+                isCharging: document.getElementById('form-start-charging').checked
+            };
+
+            if (id) {
+                const index = batteries.findIndex(b => b.id === id);
+                if (index !== -1) {
+                    batteries[index] = batteryData;
+                    showToast(`'${batteryData.name}' 배터리 정보가 수정되었습니다.`);
+                }
+            } else {
+                batteries.unshift(batteryData);
+                showToast(`'${batteryData.name}' 배터리가 성공적으로 등록되었습니다!`);
+            }
+
+            saveStorageData();
+            closeRegisterModal();
+            renderAllViews();
+        }
+
+        function toggleCharging(id) {
+            const index = batteries.findIndex(b => b.id === id);
+            if (index !== -1) {
+                if (batteries[index].level >= 100) {
+                    showToast(`'${batteries[index].name}' 배터리는 이미 100% 완충 상태입니다.`);
+                    return;
+                }
+                batteries[index].isCharging = !batteries[index].isCharging;
+                saveStorageData();
+                renderAllViews();
+                showToast(batteries[index].isCharging ? "⚡ 충전기가 연결되어 충전이 시작되었습니다!" : "⏸️ 충전기가 해제되었습니다.");
+            }
+        }
+
+        function adjustLevel(id, delta) {
+            const index = batteries.findIndex(b => b.id === id);
+            if (index !== -1) {
+                let newLevel = batteries[index].level + delta;
+                if (newLevel > 100) newLevel = 100;
+                if (newLevel < 0) newLevel = 0;
+                batteries[index].level = newLevel;
+                if (newLevel >= 100) batteries[index].isCharging = false;
+                saveStorageData();
+                renderAllViews();
+            }
+        }
+
+        function setLevelFull(id) {
+            const index = batteries.findIndex(b => b.id === id);
+            if (index !== -1) {
+                batteries[index].level = 100;
+                batteries[index].isCharging = false;
+                saveStorageData();
+                renderAllViews();
+                showToast(`'${batteries[index].name}' 배터리가 100% 완충 처리되었습니다.`);
+            }
+        }
+
+        function setLevelEmpty(id) {
+            const index = batteries.findIndex(b => b.id === id);
+            if (index !== -1) {
+                batteries[index].level = 0;
+                saveStorageData();
+                renderAllViews();
+                showToast(`'${batteries[index].name}' 배터리가 0% 방전 상태가 되었습니다.`);
+            }
+        }
+
+        function deleteBattery(id) {
+            const item = batteries.find(b => b.id === id);
+            if (item && confirm(`'${item.name}' 보조배터리를 삭제하시겠습니까?`)) {
+                batteries = batteries.filter(b => b.id !== id);
+                saveStorageData();
+                renderAllViews();
+                showToast("보조배터리가 목록에서 삭제되었습니다.");
+            }
+        }
+
+        function handleSearchFilter() {
+            searchQuery = document.getElementById('search-input').value;
+            renderBatteryGrid();
+        }
+
+        function setFilter(filterType) {
+            currentFilter = filterType;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('border-cyan-500/50', 'bg-cyan-500/10', 'text-cyan-400');
+                btn.classList.add('border-gray-300', 'dark:border-gray-800', 'text-gray-600', 'dark:text-gray-400');
+            });
+
+            const activeBtn = document.getElementById(`btn-filter-${filterType}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('border-gray-300', 'dark:border-gray-800', 'text-gray-600', 'dark:text-gray-400');
+                activeBtn.classList.add('border-cyan-500/50', 'bg-cyan-500/10', 'text-cyan-400');
+            }
+
+            renderBatteryGrid();
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'glass-card text-xs font-bold px-4 py-3 rounded-xl border border-emerald-500/40 text-emerald-400 shadow-xl flex items-center gap-2 transform translate-x-10 transition-all duration-300 pointer-events-auto';
+            toast.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> ${message}`;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.remove('translate-x-10');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-x-10');
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+    </script>
+</body>
+</html>
